@@ -19,12 +19,12 @@ func Available(data []byte) bool {
 	return false
 }
 
-func Solve(domain string, timeout time.Duration) (string, error) {
-	conn, err := Dial("whois.iana.org", timeout)
+func solve(domain string, timeout time.Duration) (string, error) {
+	conn, err := dial("whois.iana.org", timeout)
 	if err != nil {
 		return "", err
 	}
-	err = Send(conn, domain, timeout)
+	err = send(conn, domain, timeout)
 	if err != nil {
 		return "", err
 	}
@@ -41,7 +41,7 @@ func Solve(domain string, timeout time.Duration) (string, error) {
 	return "", nil
 }
 
-func Dial(host string, timeout time.Duration) (*telnet.Conn, error) {
+func dial(host string, timeout time.Duration) (*telnet.Conn, error) {
 	conn, err := telnet.DialTimeout("tcp", host+":43", timeout)
 	if err != nil {
 		return conn, err
@@ -50,7 +50,7 @@ func Dial(host string, timeout time.Duration) (*telnet.Conn, error) {
 	return conn, nil
 }
 
-func Send(conn *telnet.Conn, s string, timeout time.Duration) error {
+func send(conn *telnet.Conn, s string, timeout time.Duration) error {
 	conn.SetWriteDeadline(time.Now().Add(timeout))
 	buf := make([]byte, len(s)+1)
 	copy(buf, s)
@@ -66,15 +66,15 @@ func Send(conn *telnet.Conn, s string, timeout time.Duration) error {
 // Timeout defines timeout which is set at every write and read request.
 // Returns byte array of the WHOIS query.
 func Whois(domain string, timeout time.Duration) ([]byte, error) {
-	refer, err := Solve(domain, timeout)
+	refer, err := solve(domain, timeout)
 	if err != nil {
 		return nil, err
 	}
-	conn, err := Dial(refer, timeout)
+	conn, err := dial(refer, timeout)
 	if err != nil {
 		return nil, err
 	}
-	err = Send(conn, domain, timeout)
+	err = send(conn, domain, timeout)
 	if err != nil {
 		return nil, err
 	}
