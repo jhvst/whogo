@@ -1,11 +1,10 @@
-
 package main
 
 import (
+	"fmt"
+	"github.com/9uuso/whogo"
 	"os"
 	"time"
-	"fmt"
-	"whogo"
 )
 
 func main() {
