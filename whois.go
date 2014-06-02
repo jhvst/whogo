@@ -3,12 +3,24 @@ package whogo
 import (
 	"bufio"
 	"bytes"
+	"github.com/9uuso/go-jaro-winkler-distance"
 	"github.com/ziutek/telnet"
 	"io/ioutil"
+	"strings"
 	"time"
 )
 
-// Feed this function with data from Whois() function and it will tell whether the domain is available.
+type record struct {
+	Nameservers []string
+	Status      []string
+	Created     string
+	Updated     string
+	Expiration  string
+	Referral    string
+}
+
+// Available tells whether a domain is available according to it's WHOIS query.
+// The parameter should be the result from Whois function.
 func Available(data []byte) bool {
 	available := [34]string{"No Data Found", "NOT FOUND", "Domain Status: Available", "not registred,", "No match", "This query returned 0 objects", "Domain Not Found", "nothing found", "No records matching", "Status: AVAILABLE", "does not exist in database", "Status: Not Registered", "No match for", "Object does not exist", "We do not have an entry in our database matching your query", "no existe", "no matching record", "No domain records were found to match", "No entries found", "Status: free", "No entries found for the selected sourc", "not found...", "The domain has not been registered", "Not Registered", "No data was found", "This domain is available for registration", "Nothing found for this query", "No such domain", "No Objects Found", "Object_Not_Found", "No information available", "Domain is not registered", "domain name not known", "not found in database"}
 	for _, v := range available {
@@ -62,9 +74,8 @@ func send(conn *telnet.Conn, s string, timeout time.Duration) error {
 	return nil
 }
 
-// Takes in domain as a string without the any prefix. Example: google.com
+// Whois returns WHOIS query of a domain in format such as google.com
 // Timeout defines timeout which is set at every write and read request.
-// Returns byte array of the WHOIS query.
 func Whois(domain string, timeout time.Duration) ([]byte, error) {
 	refer, err := solve(domain, timeout)
 	if err != nil {
@@ -99,10 +110,48 @@ func Whois(domain string, timeout time.Duration) ([]byte, error) {
 	return bytes.TrimSpace(whois), nil
 }
 
-//TODO: parse whois records and return Go struct
-// func Records(status []byte) {
-// 	lines := bytes.Split(status, []byte("\n"))
-// 	for _, line := range lines {
-// 		fmt.Println(string(line))
-// 	}
-// }
+func find(query map[string]string, s ...string) string {
+
+	var max = float64(0)
+	var res string
+
+	if len(s) == 1 {
+		for whoisIndex, whoisValue := range query {
+			score := jwd.Calculate(whoisIndex, s[0])
+			if score > max && score > 0.7 {
+				max = score
+				res = whoisValue
+			}
+		}
+	}
+
+	return res
+}
+
+// Records uses Jaro-Winkler distance to parse WHOIS queries.
+// Other than .com domains may not be supported.
+func Records(data []byte) record {
+	lines := bytes.Split(data, []byte("\n"))
+	query := make(map[string]string)
+	var record record
+	for _, line := range lines {
+		if jwd.Calculate(strings.Split(string(line), ":")[0], "Referral") > 0.7 && bytes.Contains(line, []byte(":")) {
+			record.Referral = strings.TrimSpace(strings.Split(string(line), ": ")[1])
+		}
+		if len(line) > 0 && bytes.Contains(line, []byte(":")) && len(bytes.TrimSpace(bytes.Split(line, []byte(":"))[1])) > 0 {
+			this := string(line)
+			if len(query[strings.TrimSpace(strings.Split(this, ":")[0])]) != 0 {
+				n := query[strings.TrimSpace(strings.Split(this, ":")[0])]
+				query[strings.TrimSpace(strings.Split(this, ":")[0])] = n + "," + strings.TrimSpace(strings.Split(this, ":")[1])
+			} else {
+				query[strings.TrimSpace(strings.Split(this, ":")[0])] = strings.TrimSpace(strings.Split(this, ":")[1])
+			}
+		}
+	}
+	record.Updated = find(query, "Updated")
+	record.Created = find(query, "Created")
+	record.Nameservers = strings.Split(find(query, "Nameservers"), ",")
+	record.Status = strings.Split(find(query, "Status"), ",")
+	record.Expiration = find(query, "Expiration")
+	return record
+}
